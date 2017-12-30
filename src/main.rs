@@ -118,6 +118,9 @@ fn execute(program : Program) {
 fn main() {
     let mut program_input = String::new();
     let args: Vec<String> = env::args().collect();
+    if args.len() < 2 {
+        panic!("Please specific a .bf file to run.");
+    }
     let filename = &args[1];
     let mut f = File::open(filename).expect("File not found");
     f.read_to_string(&mut program_input)
