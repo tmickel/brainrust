@@ -5,11 +5,13 @@ use std::fs::File;
 
 const MEMORY_SIZE : usize = 30000;
 type InstructionIndex = usize;
+type CellType = u8;
+#[derive(Clone)]
 enum Op {
-    IncrementDP,
-    DecrementDP,
-    IncrementByteAtDP,
-    DecrementByteAtDP,
+    IncreaseDPBy(usize),
+    DecreaseDPBy(usize),
+    IncreaseByteAtDPBy(CellType),
+    DecreaseByteAtDPBy(CellType),
     OutputByteAtDP,
     InputByteToDP,
     IfByteZeroJumpTo(Option<InstructionIndex>),
@@ -21,12 +23,44 @@ fn parse(input : &str) -> Program {
     let mut parsed: Program = Vec::new();
     let mut bracket_stack: Vec<InstructionIndex> = Vec::new();
     let mut index : InstructionIndex = 0;
+    let mut previous_instruction : Option<Op> = None;
     for instruction in input.chars() {
         match instruction {
-            '>' => parsed.push(Op::IncrementDP),
-            '<' => parsed.push(Op::DecrementDP),
-            '+' => parsed.push(Op::IncrementByteAtDP),
-            '-' => parsed.push(Op::DecrementByteAtDP),
+            // Repeat > < + - are coalesced into single ops for execution,
+            // as an optimization. For example, >>>>> will be IncreaseDPBy(5).
+            // TODO: Can refactor lots of duplicate logic here, probably.
+            '>' => {
+                match previous_instruction {
+                    Some(Op::IncreaseDPBy(n)) =>
+                        parsed[index - 1] = Op::IncreaseDPBy(n + 1),
+                    _ =>
+                        parsed.push(Op::IncreaseDPBy(1))
+                }
+            },
+            '<' => {
+                match previous_instruction {
+                    Some(Op::DecreaseDPBy(n)) =>
+                        parsed[index - 1] = Op::DecreaseDPBy(n + 1),
+                    _ =>
+                        parsed.push(Op::DecreaseDPBy(1))
+                }
+            },
+            '+' => {
+                match previous_instruction {
+                    Some(Op::IncreaseByteAtDPBy(n)) =>
+                        parsed[index - 1] = Op::IncreaseByteAtDPBy(n + 1),
+                    _ => 
+                        parsed.push(Op::IncreaseByteAtDPBy(1))
+                }
+            },
+            '-' => {
+                match previous_instruction {
+                    Some(Op::DecreaseByteAtDPBy(n)) =>
+                        parsed[index - 1] = Op::DecreaseByteAtDPBy(n + 1),
+                    _ =>
+                        parsed.push(Op::DecreaseByteAtDPBy(1))
+                }
+            },
             '.' => parsed.push(Op::OutputByteAtDP),
             ',' => parsed.push(Op::InputByteToDP),
             '[' => {
@@ -58,7 +92,11 @@ fn parse(input : &str) -> Program {
                 continue; // Invalid characters are skipped.
             }
         }
-        index += 1;
+        // Makes a copy, because otherwise, we would need to hold
+        // an immutable reference of `parsed`? (Not possible while we
+        // hold a mutable reference).
+        previous_instruction = Some(parsed[parsed.len() - 1].clone());
+        index = parsed.len();
     }
     if bracket_stack.len() != 0 {
         panic!("Start bracket found with no end match");
@@ -67,7 +105,7 @@ fn parse(input : &str) -> Program {
 }
 
 fn execute(program : Program) {
-    let mut memory : Vec<u8> = vec![0; MEMORY_SIZE];
+    let mut memory : Vec<CellType> = vec![0; MEMORY_SIZE];
     let mut instruction_pointer : InstructionIndex = 0;
     let mut data_pointer : usize = 0;
     
@@ -75,20 +113,10 @@ fn execute(program : Program) {
     while instruction_pointer <= last_instruction_pointer {
         let instruction = &program[instruction_pointer];
         match *instruction {
-            Op::IncrementDP => {
-                if data_pointer == MEMORY_SIZE - 1 {
-                    panic!("Data pointer out of bounds");
-                }
-                data_pointer += 1;
-            }
-            Op::DecrementDP => {
-                if data_pointer == 0 {
-                    panic!("Data pointer out of bounds");
-                }
-                data_pointer -= 1;
-            }
-            Op::IncrementByteAtDP => memory[data_pointer] += 1,
-            Op::DecrementByteAtDP => memory[data_pointer] -= 1,
+            Op::IncreaseDPBy(n) => data_pointer += n,
+            Op::DecreaseDPBy(n) => data_pointer -= n,
+            Op::IncreaseByteAtDPBy(n) => memory[data_pointer] += n,
+            Op::DecreaseByteAtDPBy(n) => memory[data_pointer] -= n,
             Op::OutputByteAtDP => print!("{}", memory[data_pointer] as char),
             Op::InputByteToDP => {
                 let mut input_char : [u8; 1] = [0];
