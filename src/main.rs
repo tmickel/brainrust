@@ -2,10 +2,11 @@ use std::io;
 use std::io::Read;
 use std::env;
 use std::fs::File;
+use std::num::Wrapping;
 
 const MEMORY_SIZE : usize = 30000;
 type InstructionIndex = usize;
-type CellType = u8;
+type CellType = Wrapping<u8>;
 #[derive(Clone)]
 enum Op {
     IncreaseDPBy(usize),
@@ -48,17 +49,17 @@ fn parse(input : &str) -> Program {
             '+' => {
                 match previous_instruction {
                     Some(Op::IncreaseByteAtDPBy(n)) =>
-                        parsed[index - 1] = Op::IncreaseByteAtDPBy(n + 1),
+                        parsed[index - 1] = Op::IncreaseByteAtDPBy(Wrapping(n.0 + 1)),
                     _ => 
-                        parsed.push(Op::IncreaseByteAtDPBy(1))
+                        parsed.push(Op::IncreaseByteAtDPBy(Wrapping(1)))
                 }
             },
             '-' => {
                 match previous_instruction {
                     Some(Op::DecreaseByteAtDPBy(n)) =>
-                        parsed[index - 1] = Op::DecreaseByteAtDPBy(n + 1),
+                        parsed[index - 1] = Op::DecreaseByteAtDPBy(Wrapping(n.0 + 1)),
                     _ =>
-                        parsed.push(Op::DecreaseByteAtDPBy(1))
+                        parsed.push(Op::DecreaseByteAtDPBy(Wrapping(1)))
                 }
             },
             '.' => parsed.push(Op::OutputByteAtDP),
@@ -105,9 +106,10 @@ fn parse(input : &str) -> Program {
 }
 
 fn execute(program : Program) {
-    let mut memory : Vec<CellType> = vec![0; MEMORY_SIZE];
+    let mut memory : Vec<CellType> = vec![Wrapping(0); MEMORY_SIZE];
     let mut instruction_pointer : InstructionIndex = 0;
     let mut data_pointer : usize = 0;
+
     
     let last_instruction_pointer = program.len() - 1;
     while instruction_pointer <= last_instruction_pointer {
@@ -117,15 +119,15 @@ fn execute(program : Program) {
             Op::DecreaseDPBy(n) => data_pointer -= n,
             Op::IncreaseByteAtDPBy(n) => memory[data_pointer] += n,
             Op::DecreaseByteAtDPBy(n) => memory[data_pointer] -= n,
-            Op::OutputByteAtDP => print!("{}", memory[data_pointer] as char),
+            Op::OutputByteAtDP => print!("{}", memory[data_pointer].0 as char),
             Op::InputByteToDP => {
                 let mut input_char : [u8; 1] = [0];
                 io::stdin().read_exact(&mut input_char)
                     .expect("Something went wrong reading in");
-                memory[data_pointer] = input_char[0];
+                memory[data_pointer] = Wrapping(input_char[0]);
             }
             Op::IfByteZeroJumpTo(Some(jump_location)) => {
-                if memory[data_pointer] == 0 {
+                if memory[data_pointer].0 == 0 {
                     instruction_pointer = jump_location;
                     continue;
                 }
@@ -133,7 +135,7 @@ fn execute(program : Program) {
             Op::IfByteZeroJumpTo(None) =>
                 panic!("Start bracket found with no end match"),
             Op::IfByteNotZeroJumpTo(jump_location) => {
-                if memory[data_pointer] != 0 {
+                if memory[data_pointer].0 != 0 {
                     instruction_pointer = jump_location;
                     continue;
                 }
